@@ -1,0 +1,251 @@
+const fetch = require('node-fetch');
+const cheerio = require('cheerio');
+
+async function fetchCaltransData() {
+  try {
+    const response = await fetch(
+      'https://roads.dot.ca.gov/roadscell.php?roadnumber=80',
+      {
+        headers: {
+          'User-Agent':
+            'Mozilla/5.0 (compatible; is80open/1.0; road-status-checker)',
+        },
+        timeout: 10000,
+      }
+    );
+    const html = await response.text();
+    return html;
+  } catch (error) {
+    console.error('Error fetching Caltrans data:', error);
+    return null;
+  }
+}
+
+function parseStatus(html) {
+  if (!html) {
+    return {
+      status: 'unknown',
+      details: ['Unable to fetch road conditions. Please check Caltrans directly.'],
+    };
+  }
+
+  const $ = cheerio.load(html);
+  const fullText = $.text();
+  const upperText = fullText.toUpperCase();
+
+  // Find the Northern California / Sierra Nevada section
+  const northernCalIndex = upperText.indexOf('NORTHERN CALIFORNIA');
+  if (northernCalIndex === -1) {
+    // If we can't find the section, try to work with full text
+    return analyzeText(fullText);
+  }
+
+  // Get text from Northern California section onward
+  // Look for the next major section to limit our search
+  const sectionText = fullText.substring(northernCalIndex, northernCalIndex + 8000);
+  return analyzeText(sectionText);
+}
+
+function analyzeText(sectionText) {
+  const upperText = sectionText.toUpperCase();
+  const lines = sectionText.split(/\n/).map((l) => l.trim()).filter((l) => l.length > 0);
+
+  // Find lines related to Route 80
+  let inRoute80 = false;
+  let route80Lines = [];
+
+  for (const line of lines) {
+    const upper = line.toUpperCase();
+
+    // Detect start of Route 80 section
+    if (/\bROUTE\s+80\b/i.test(upper) || /\bSR[\s-]*80\b/i.test(upper)) {
+      inRoute80 = true;
+      route80Lines.push(line);
+      continue;
+    }
+
+    // Detect start of a different route (end of Route 80 section)
+    if (inRoute80 && /\bROUTE\s+(?!80)\d+/i.test(upper)) {
+      inRoute80 = false;
+      continue;
+    }
+
+    if (inRoute80) {
+      route80Lines.push(line);
+    }
+  }
+
+  // If we didn't find a clear Route 80 section, search the whole text
+  const searchText = route80Lines.length > 0
+    ? route80Lines.join(' ').toUpperCase()
+    : upperText;
+
+  const details = [];
+
+  // Sierra Nevada key locations between Sacramento and Reno
+  const sierraLocations = [
+    'COLFAX', 'ALTA', 'EMIGRANT GAP', 'BLUE CANYON', 'KINGVALE',
+    'SODA SPRINGS', 'NORDEN', 'DONNER', 'TRUCKEE', 'FLORISTON',
+    'GOLD RUN', 'DRUM FOREBAY', 'CRYSTAL SPRINGS', 'BAXTER',
+    'CISCO GROVE', 'RAINBOW', 'CASTLE PEAK', 'BOREAL', 'SUGAR BOWL',
+    'DONNER SUMMIT', 'DONNER LAKE', 'HIRSCHDALE', 'FARAD',
+    'APPLEGATE', 'WEIMAR', 'MAGRA', 'AUBURN', 'ROCKLIN',
+    'ROSEVILLE', 'PENRYN', 'LOOMIS', 'BOWMAN', 'SECRET TOWN',
+    'TOWLE', 'YUBA GAP', 'CISCO', 'VALLEY SPRINGS',
+    'NEVADA STATE LINE', 'NEVADA COUNTY', 'PLACER COUNTY',
+    'EAST OF', 'WEST OF'
+  ];
+
+  // Check for closure
+  let isClosed = false;
+  let hasRestrictions = false;
+
+  // Closure patterns
+  const closurePatterns = [
+    /CLOSED\s+(?:FROM|AT|BETWEEN|IN|NEAR)/i,
+    /IS\s+CLOSED/i,
+    /ROAD\s+CLOSED/i,
+    /HWY\s+CLOSED/i,
+    /HIGHWAY\s+CLOSED/i,
+    /CLOSED\s+DUE\s+TO/i,
+    /CLOSED\s+FOR/i,
+    /CLOSURE/i,
+  ];
+
+  // Restriction patterns (chain controls etc.)
+  const restrictionPatterns = [
+    /R[\s-]*1/i,
+    /R[\s-]*2/i,
+    /R[\s-]*3/i,
+    /CHAIN\s*CONTROL/i,
+    /CHAINS?\s+REQUIRED/i,
+    /CHAINS?\s+OR\s+SNOW\s+TIRES/i,
+    /TRACTION\s+DEVICES/i,
+    /SNOW\s+TIRES?\s+REQUIRED/i,
+    /CARRYING\s+CHAINS/i,
+    /ONE[\s-]WAY\s+TRAFFIC\s+CONTROL/i,
+    /TRAFFIC\s+CONTROL/i,
+    /ESCORTS?/i,
+    /PILOT\s+CAR/i,
+    /CONVOY/i,
+    /SPEED\s+LIMIT\s+\d+/i,
+    /REDUCED\s+SPEED/i,
+  ];
+
+  // Check all relevant route 80 lines for Sierra-area conditions
+  const route80Text = route80Lines.join('\n');
+  const route80Upper = route80Text.toUpperCase();
+
+  // Check closures
+  for (const pattern of closurePatterns) {
+    if (pattern.test(route80Upper)) {
+      // Verify it's not just about ramps or oversized vehicles
+      const match = route80Upper.match(pattern);
+      if (match) {
+        const context = route80Upper.substring(
+          Math.max(0, match.index - 50),
+          Math.min(route80Upper.length, match.index + 100)
+        );
+
+        if (
+          !/RAMP\s+CLOSED/i.test(context) &&
+          !/CLOSED\s+TO\s+OVERSIZ/i.test(context) &&
+          !/CONNECTOR\s+CLOSED/i.test(context) &&
+          !/REST\s+AREA.*CLOSED/i.test(context)
+        ) {
+          isClosed = true;
+
+          // Try to extract the specific closure detail
+          const closureLines = route80Lines.filter((l) => {
+            const u = l.toUpperCase();
+            return closurePatterns.some((p) => p.test(u));
+          });
+          closureLines.forEach((cl) => details.push(cl.trim()));
+        }
+      }
+    }
+  }
+
+  // Check restrictions
+  for (const pattern of restrictionPatterns) {
+    if (pattern.test(route80Upper)) {
+      hasRestrictions = true;
+      const restrictionLines = route80Lines.filter((l) => {
+        const u = l.toUpperCase();
+        return restrictionPatterns.some((p) => p.test(u));
+      });
+      restrictionLines.forEach((rl) => details.push(rl.trim()));
+    }
+  }
+
+  // Check for "no restrictions" which overrides
+  const noRestrictionPatterns = [
+    /NO\s+RESTRICTIONS/i,
+    /NO\s+TRAFFIC\s+RESTRICTIONS/i,
+  ];
+
+  let explicitlyOpen = false;
+  for (const pattern of noRestrictionPatterns) {
+    if (pattern.test(route80Upper)) {
+      explicitlyOpen = true;
+    }
+  }
+
+  // If the ONLY thing we see is "no restrictions" and nothing else, it's open
+  if (explicitlyOpen && !isClosed && !hasRestrictions) {
+    return {
+      status: 'open',
+      details: ['No restrictions reported on I-80'],
+      route80Lines: route80Lines.slice(0, 15),
+    };
+  }
+
+  // Determine final status
+  let status = 'open';
+  if (isClosed) {
+    status = 'closed';
+  } else if (hasRestrictions) {
+    status = 'restrictions';
+  }
+
+  return {
+    status,
+    details: [...new Set(details)].slice(0, 8),
+    route80Lines: route80Lines.slice(0, 15),
+  };
+}
+
+module.exports = async function handler(req, res) {
+  // Set CORS headers
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Cache-Control', 's-maxage=120, stale-while-revalidate=60');
+
+  try {
+    const html = await fetchCaltransData();
+    const statusData = parseStatus(html);
+
+    const now = new Date();
+    const pacificTime = now.toLocaleString('en-US', {
+      timeZone: 'America/Los_Angeles',
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    });
+
+    res.status(200).json({
+      ...statusData,
+      checkedAt: pacificTime,
+      timestamp: now.toISOString(),
+    });
+  } catch (error) {
+    console.error('Handler error:', error);
+    res.status(500).json({
+      status: 'unknown',
+      details: ['Error checking road conditions'],
+      error: error.message,
+    });
+  }
+};
