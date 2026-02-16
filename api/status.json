@@ -2,7 +2,7 @@ const fetch = require('node-fetch');
 
 // ============================================
 // FETCH DATA FROM MULTIPLE SOURCES
-// We try several approaches to get road data
+// We try several approaches to get road data.
 // ============================================
 
 async function fetchFromCaltransMain() {
