@@ -56,7 +56,7 @@
         radial-gradient(ellipse at 50% 80%, #3a6b1e22 0%, transparent 50%);
     }
     body.status-open .road-badge { border-color: #8fbc5a55; color: #8fbc5a; background: #3a6b1e33; }
-    body.status-open .status-message a { color: #8fbc5a; }
+    body.status-open .status-message a { color: #d4e8c2; }
     body.status-open .refresh-dot { background: #8fbc5a; }
     body.status-open .timestamp { color: #8fbc5a88; }
 
@@ -71,7 +71,7 @@
         radial-gradient(ellipse at 50% 80%, #967d2a22 0%, transparent 50%);
     }
     body.status-restrictions .road-badge { border-color: #d4a84355; color: #d4a843; background: #967d2a33; }
-    body.status-restrictions .status-message a { color: #d4a843; }
+    body.status-restrictions .status-message a { color: #fef3c7; }
     body.status-restrictions .refresh-dot { background: #d4a843; }
     body.status-restrictions .timestamp { color: #d4a84388; }
 
@@ -86,7 +86,7 @@
         radial-gradient(ellipse at 50% 80%, #86305022 0%, transparent 50%);
     }
     body.status-closed .road-badge { border-color: #d4637a55; color: #d4637a; background: #86305033; }
-    body.status-closed .status-message a { color: #d4637a; }
+    body.status-closed .status-message a { color: #f5d0d8; }
     body.status-closed .refresh-dot { background: #d4637a; }
     body.status-closed .timestamp { color: #d4637a88; }
 
@@ -100,7 +100,7 @@
         radial-gradient(ellipse at 80% 20%, #4b556333 0%, transparent 50%);
     }
     body.status-unknown .road-badge { border-color: #9ca3af55; color: #9ca3af; background: #4b556333; }
-    body.status-unknown .status-message a { color: #9ca3af; }
+    body.status-unknown .status-message a { color: #e5e7eb; }
     body.status-unknown .refresh-dot { background: #9ca3af; }
     body.status-unknown .timestamp { color: #9ca3af88; }
 
@@ -133,32 +133,47 @@
       letter-spacing: -0.03em;
       line-height: 0.9;
       margin-bottom: 1.5rem;
-      transition: all 0.8s ease;
+      transition: all 0.5s ease;
+      white-space: pre-line;
     }
 
-    /* Smaller text for longer restriction phrases */
     .status-heading.long-text {
-      font-size: clamp(2.2rem, 8vw, 7rem);
+      font-size: clamp(2rem, 7vw, 6rem);
+      line-height: 1.05;
+    }
+
+    .status-heading.medium-text {
+      font-size: clamp(3rem, 10vw, 8rem);
       line-height: 1.0;
     }
 
     .status-message {
-      font-size: clamp(1.1rem, 3vw, 1.8rem);
+      font-size: clamp(1rem, 2.5vw, 1.5rem);
       font-weight: 400;
       line-height: 1.5;
       opacity: 0.9;
-      max-width: 600px;
+      max-width: 700px;
       margin: 0 auto;
+      white-space: nowrap;
+    }
+
+    @media (max-width: 600px) {
+      .status-message {
+        white-space: normal;
+        font-size: clamp(0.95rem, 4vw, 1.3rem);
+      }
     }
 
     .status-message a {
+      color: inherit;
       text-decoration: underline;
       text-underline-offset: 3px;
+      text-decoration-thickness: 2px;
       font-weight: 600;
       transition: opacity 0.2s ease;
     }
 
-    .status-message a:hover { opacity: 0.8; }
+    .status-message a:hover { opacity: 0.7; }
 
     .updated {
       margin-top: 2.5rem;
@@ -236,22 +251,11 @@
       opacity: 0.8;
       text-decoration: underline;
     }
-
-    /* Live clock tick animation */
-    @keyframes tick {
-      0% { opacity: 1; }
-      50% { opacity: 0.4; }
-      100% { opacity: 1; }
-    }
-
-    .clock-colon {
-      animation: tick 1s ease-in-out infinite;
-    }
   </style>
 </head>
 <body class="loading">
   <div class="container">
-    <div class="road-badge">Interstate 80 — Sacramento to Reno</div>
+    <div class="road-badge">I-80 In The Sierras</div>
     <h1 class="status-heading" id="heading">Checking...</h1>
     <p class="status-message" id="message">
       Loading current road conditions...
@@ -274,82 +278,85 @@
   </div>
 
   <script>
-    const CALTRANS_URL = 'https://roads.dot.ca.gov/roadscell.php?roadnumber=80';
+    var CALTRANS_URL = 'https://roads.dot.ca.gov/roadscell.php?roadnumber=80';
 
     // Fun random headings for restrictions status
-    const RESTRICTION_HEADINGS = [
+    var RESTRICTION_HEADINGS = [
       'SORT OF.',
       "IT'S COMPLICATED.",
-      "IT'S MESSY OUT THERE.",
+      "IT'S MESSY\nOUT THERE.",
       'YIKES.',
-      'GOOD LUCK JERRY.',
-      'MAYBE RECONSIDER.',
-      'BUCKLE UP BABY.',
+      'GOOD LUCK\nJERRY.',
+      'MAYBE\nRECONSIDER.',
+      'BUCKLE UP\nBABY.',
       'A LITTLE YES\nA LITTLE NO.',
       'KIND OF.',
-      'UH OH.'
+      'UH OH.',
+      'LOOKS LIKE\nA BAD IDEA.',
+      'MAYBE\nSTAY PUT.',
+      'CAREFUL\nOUT THERE.'
     ];
 
     function getRandomRestrictionHeading() {
-      const index = Math.floor(Math.random() * RESTRICTION_HEADINGS.length);
+      var index = Math.floor(Math.random() * RESTRICTION_HEADINGS.length);
       return RESTRICTION_HEADINGS[index];
     }
 
-    // Determine if heading text is "long" and needs smaller font
-    function isLongHeading(text) {
-      return text.length > 12;
+    function getHeadingSizeClass(text) {
+      var cleanText = text.replace(/\n/g, ' ');
+      if (cleanText.length > 18) return 'long-text';
+      if (cleanText.length > 10) return 'medium-text';
+      return '';
     }
 
-    const STATUS_CONFIG = {
+    var STATUS_CONFIG = {
       open: {
         heading: 'YES.',
-        message: 'I-80 is open through the Sierras.',
+        message: 'I-80 is open through the Sierras. More info <a href="URL" target="_blank" rel="noopener noreferrer">HERE</a>.',
         emoji: '🟢',
         titlePrefix: '✅ YES'
       },
       restrictions: {
-        heading: null, // Will be random
-        message: 'I-80 has some restrictions through the Sierras.',
+        heading: null,
+        message: 'I-80 has some restrictions through the Sierras. More info <a href="URL" target="_blank" rel="noopener noreferrer">HERE</a>.',
         emoji: '🟡',
         titlePrefix: '⚠️ RESTRICTIONS'
       },
       closed: {
         heading: 'NO.',
-        message: 'I-80 is closed through the Sierras.',
+        message: 'I-80 is closed through the Sierras. More info <a href="URL" target="_blank" rel="noopener noreferrer">HERE</a>.',
         emoji: '🔴',
         titlePrefix: '❌ CLOSED'
       },
       unknown: {
         heading: 'UNKNOWN',
-        message: 'Unable to determine I-80 status.',
+        message: 'Unable to determine I-80 status. Check <a href="URL" target="_blank" rel="noopener noreferrer">Caltrans</a> directly.',
         emoji: '⚪',
         titlePrefix: '❓'
       }
     };
 
-    let lastCheckedTime = null;
-    let currentStatus = null;
+    var lastCheckedTime = null;
 
-    async function checkStatus() {
-      try {
-        const response = await fetch('/api/status');
-        const data = await response.json();
-        currentStatus = data;
-        lastCheckedTime = new Date();
-        updatePage(data);
-      } catch (error) {
-        console.error('Error checking status:', error);
-        currentStatus = { status: 'unknown', checkedAt: 'Unable to check' };
-        lastCheckedTime = new Date();
-        updatePage(currentStatus);
-      }
+    function checkStatus() {
+      fetch('/api/status')
+        .then(function (response) { return response.json(); })
+        .then(function (data) {
+          lastCheckedTime = new Date();
+          updatePage(data);
+        })
+        .catch(function (error) {
+          console.error('Error checking status:', error);
+          lastCheckedTime = new Date();
+          updatePage({ status: 'unknown', checkedAt: 'Unable to check' });
+        });
     }
 
     function updatePage(data) {
-      const config = STATUS_CONFIG[data.status] || STATUS_CONFIG.unknown;
+      var config = STATUS_CONFIG[data.status] || STATUS_CONFIG.unknown;
 
-      // Get heading - random for restrictions
-      let heading;
+      // Get heading — random for restrictions
+      var heading;
       if (data.status === 'restrictions') {
         heading = getRandomRestrictionHeading();
       } else {
@@ -361,19 +368,19 @@
       document.body.classList.add('status-' + data.status);
 
       // Update heading
-      const headingEl = document.getElementById('heading');
+      var headingEl = document.getElementById('heading');
       headingEl.textContent = heading;
 
-      // Add/remove long-text class for sizing
-      if (isLongHeading(heading)) {
-        headingEl.classList.add('long-text');
-      } else {
-        headingEl.classList.remove('long-text');
+      // Size class
+      headingEl.classList.remove('long-text', 'medium-text');
+      var sizeClass = getHeadingSizeClass(heading);
+      if (sizeClass) {
+        headingEl.classList.add(sizeClass);
       }
 
-      // Update message
-      document.getElementById('message').innerHTML =
-        config.message + ' More info <a href="' + CALTRANS_URL + '" target="_blank" rel="noopener noreferrer">HERE</a>.';
+      // Update message with link
+      var messageHTML = config.message.replace(/URL/g, CALTRANS_URL);
+      document.getElementById('message').innerHTML = messageHTML;
 
       // Update source line
       document.getElementById('updated-source').innerHTML =
@@ -385,7 +392,7 @@
     }
 
     function updateFavicon(emoji) {
-      let link = document.querySelector("link[rel*='icon']");
+      var link = document.querySelector("link[rel*='icon']");
       if (!link) {
         link = document.createElement('link');
         link.rel = 'icon';
@@ -394,24 +401,21 @@
       link.href = "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>" + emoji + "</text></svg>";
     }
 
-    // Live clock that updates every second
     function updateClock() {
-      const now = new Date();
-      const options = {
+      var now = new Date();
+      var timeStr = now.toLocaleString('en-US', {
         timeZone: 'America/Los_Angeles',
         hour: 'numeric',
         minute: '2-digit',
         second: '2-digit',
-        hour12: true
-      };
-      const timeStr = now.toLocaleString('en-US', options);
+        hour12: true,
+      });
 
-      // Add blinking colon effect via HTML
-      const clockEl = document.getElementById('live-clock');
+      var clockEl = document.getElementById('live-clock');
       if (clockEl) {
         if (lastCheckedTime) {
-          const secondsAgo = Math.floor((now - lastCheckedTime) / 1000);
-          let agoText;
+          var secondsAgo = Math.floor((now - lastCheckedTime) / 1000);
+          var agoText;
           if (secondsAgo < 60) {
             agoText = 'just now';
           } else if (secondsAgo < 120) {
@@ -419,7 +423,7 @@
           } else {
             agoText = Math.floor(secondsAgo / 60) + ' min ago';
           }
-          clockEl.textContent = 'Last checked ' + agoText + ' · ' + timeStr + ' PT';
+          clockEl.textContent = 'Last checked ' + agoText + '  ·  ' + timeStr + ' PT';
         } else {
           clockEl.textContent = timeStr + ' PT';
         }
