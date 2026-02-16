@@ -20,7 +20,6 @@
       align-items: center;
       justify-content: center;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-      transition: background-color 0.8s ease, color 0.8s ease;
       overflow-x: hidden;
       position: relative;
       background-color: #374151;
@@ -32,7 +31,7 @@
       position: absolute;
       top: 0; left: 0; right: 0; bottom: 0;
       pointer-events: none;
-      transition: background 0.8s ease;
+      transition: background 1s ease;
     }
 
     body::after {
@@ -44,7 +43,7 @@
       pointer-events: none;
     }
 
-    /* STATUS THEMES */
+    /* STATUS THEMES — background transitions smoothly */
     body.status-open {
       background-color: #2d5016;
       color: #d4e8c2;
@@ -112,6 +111,10 @@
       padding: 2rem;
       max-width: 800px;
       width: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
     }
 
     .road-badge {
@@ -124,7 +127,9 @@
       font-weight: 600;
       letter-spacing: 0.1em;
       text-transform: uppercase;
-      transition: all 0.8s ease;
+      /* Animation: starts hidden */
+      opacity: 0;
+      transform: translateY(-10px);
     }
 
     .status-heading {
@@ -133,8 +138,12 @@
       letter-spacing: -0.03em;
       line-height: 0.9;
       margin-bottom: 1.5rem;
-      transition: all 0.5s ease;
       white-space: pre-line;
+      text-align: center;
+      width: 100%;
+      /* Animation: starts hidden */
+      opacity: 0;
+      transform: scale(0.8);
     }
 
     .status-heading.long-text {
@@ -151,10 +160,13 @@
       font-size: clamp(1rem, 2.5vw, 1.5rem);
       font-weight: 400;
       line-height: 1.5;
-      opacity: 0.9;
+      opacity: 0;
       max-width: 700px;
       margin: 0 auto;
       white-space: nowrap;
+      text-align: center;
+      /* Animation: starts hidden */
+      transform: translateY(10px);
     }
 
     @media (max-width: 600px) {
@@ -178,8 +190,11 @@
     .updated {
       margin-top: 2.5rem;
       font-size: 0.8rem;
-      opacity: 0.45;
       font-weight: 300;
+      text-align: center;
+      /* Animation: starts hidden */
+      opacity: 0;
+      transform: translateY(10px);
     }
 
     .timestamp {
@@ -187,7 +202,6 @@
       margin-top: 0.5rem;
       font-size: 0.95rem;
       font-weight: 500;
-      opacity: 1;
       font-variant-numeric: tabular-nums;
       letter-spacing: 0.02em;
     }
@@ -207,9 +221,102 @@
       50% { opacity: 1; }
     }
 
-    .loading .status-heading {
-      font-size: clamp(2rem, 6vw, 4rem);
-      opacity: 0.5;
+    /* ================================
+       ANIMATION CLASSES
+       Applied by JavaScript after data loads
+       ================================ */
+
+    .animate-in .road-badge {
+      animation: fadeSlideDown 0.6s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+      animation-delay: 0.1s;
+    }
+
+    .animate-in .status-heading {
+      animation: scaleIn 0.7s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+      animation-delay: 0.25s;
+    }
+
+    .animate-in .status-message {
+      animation: fadeSlideUp 0.6s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+      animation-delay: 0.5s;
+    }
+
+    .animate-in .updated {
+      animation: fadeSlideUp 0.6s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+      animation-delay: 0.7s;
+    }
+
+    @keyframes fadeSlideDown {
+      from {
+        opacity: 0;
+        transform: translateY(-10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @keyframes scaleIn {
+      from {
+        opacity: 0;
+        transform: scale(0.8);
+      }
+      to {
+        opacity: 1;
+        transform: scale(1);
+      }
+    }
+
+    @keyframes fadeSlideUp {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+      to {
+        opacity: 0.9;
+        transform: translateY(0);
+      }
+    }
+
+    /* After animation completes, keep updated section subtle */
+    .animate-in .updated {
+      /* Final opacity handled by animation end state */
+    }
+
+    /* Loading state — simple centered text */
+    .loading-state .status-heading {
+      font-size: clamp(1.5rem, 4vw, 2.5rem);
+      opacity: 0.4;
+      transform: scale(1);
+      animation: loadingPulse 1.5s ease-in-out infinite;
+      letter-spacing: 0.05em;
+      font-weight: 400;
+    }
+
+    @keyframes loadingPulse {
+      0%, 100% { opacity: 0.3; }
+      50% { opacity: 0.5; }
+    }
+
+    /* Re-check transition: subtle fade for updates after initial load */
+    .recheck .road-badge,
+    .recheck .status-heading,
+    .recheck .status-message,
+    .recheck .updated {
+      animation: none;
+      transition: opacity 0.4s ease, transform 0.4s ease;
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+
+    .recheck .updated {
+      opacity: 0.9;
+    }
+
+    /* Background color transition */
+    body {
+      transition: background-color 1s ease, color 1s ease;
     }
 
     /* Ad container */
@@ -253,14 +360,12 @@
     }
   </style>
 </head>
-<body class="loading">
-  <div class="container">
+<body>
+  <div class="container loading-state" id="container">
     <div class="road-badge">I-80 In The Sierras</div>
-    <h1 class="status-heading" id="heading">Checking...</h1>
-    <p class="status-message" id="message">
-      Loading current road conditions...
-    </p>
-    <div class="updated">
+    <h1 class="status-heading" id="heading">Checking conditions...</h1>
+    <p class="status-message" id="message"></p>
+    <div class="updated" id="updated-wrap">
       <span id="updated-source"></span>
       <span class="timestamp" id="live-clock"></span>
     </div>
@@ -279,11 +384,11 @@
 
   <script>
     var CALTRANS_URL = 'https://roads.dot.ca.gov/roadscell.php?roadnumber=80';
+    var isFirstLoad = true;
 
-    // Fun random headings for restrictions status
     var RESTRICTION_HEADINGS = [
       'SORT OF.',
-      "IT'S COMPLICATED.",
+      "IT'S\nCOMPLICATED.",
       "IT'S MESSY\nOUT THERE.",
       'YIKES.',
       'GOOD LUCK\nJERRY.',
@@ -354,8 +459,9 @@
 
     function updatePage(data) {
       var config = STATUS_CONFIG[data.status] || STATUS_CONFIG.unknown;
+      var container = document.getElementById('container');
 
-      // Get heading — random for restrictions
+      // Get heading
       var heading;
       if (data.status === 'restrictions') {
         heading = getRandomRestrictionHeading();
@@ -363,32 +469,45 @@
         heading = config.heading;
       }
 
-      // Remove all status classes
-      document.body.classList.remove('loading', 'status-open', 'status-restrictions', 'status-closed', 'status-unknown');
-      document.body.classList.add('status-' + data.status);
+      // Remove all status and animation classes from body
+      document.body.classList.remove('status-open', 'status-restrictions', 'status-closed', 'status-unknown');
 
-      // Update heading
+      // Remove old animation/loading classes from container
+      container.classList.remove('loading-state', 'animate-in', 'recheck');
+
+      // Set the content BEFORE animating
       var headingEl = document.getElementById('heading');
       headingEl.textContent = heading;
-
-      // Size class
       headingEl.classList.remove('long-text', 'medium-text');
       var sizeClass = getHeadingSizeClass(heading);
       if (sizeClass) {
         headingEl.classList.add(sizeClass);
       }
 
-      // Update message with link
       var messageHTML = config.message.replace(/URL/g, CALTRANS_URL);
       document.getElementById('message').innerHTML = messageHTML;
 
-      // Update source line
       document.getElementById('updated-source').innerHTML =
         'Data from Caltrans <span class="refresh-dot"></span>';
 
-      // Update page title
       document.title = 'Is I-80 Open? ' + config.titlePrefix;
       updateFavicon(config.emoji);
+
+      // Apply status theme to body (triggers background color transition)
+      document.body.classList.add('status-' + data.status);
+
+      // Trigger animation
+      // Use requestAnimationFrame to ensure DOM updates before animation starts
+      requestAnimationFrame(function () {
+        requestAnimationFrame(function () {
+          if (isFirstLoad) {
+            container.classList.add('animate-in');
+            isFirstLoad = false;
+          } else {
+            container.classList.add('recheck');
+          }
+        });
+      });
     }
 
     function updateFavicon(emoji) {
