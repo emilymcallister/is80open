@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Is I-80 Open?</title>
+  <meta name="description" content="Quick at-a-glance status of Interstate 80 through the Sierra Nevada between Sacramento and Reno. Chain controls, closures, and restrictions.">
+  <meta property="og:title" content="Is I-80 Open?">
+  <meta property="og:description" content="Quick status check for I-80 through the Sierra Nevada.">
+  <meta property="og:url" content="https://www.is80open.com">
+  <meta property="og:type" content="website">
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      transition: background-color 0.8s ease, color 0.8s ease;
+      overflow-x: hidden;
+      position: relative;
+      /* Default loading state */
+      background-color: #374151;
+      color: #e5e7eb;
+    }
+
+    body::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      pointer-events: none;
+      transition: background 0.8s ease;
+    }
+
+    body::after {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      opacity: 0.03;
+      background-image: repeating-linear-gradient(0deg, transparent, transparent 80px, currentColor 80px, currentColor 81px);
+      pointer-events: none;
+    }
+
+    /* STATUS THEMES */
+    body.status-open {
+      background-color: #2d5016;
+      color: #d4e8c2;
+    }
+    body.status-open::before {
+      background:
+        radial-gradient(ellipse at 20% 50%, #3a6b1e44 0%, transparent 50%),
+        radial-gradient(ellipse at 80% 20%, #3a6b1e33 0%, transparent 50%),
+        radial-gradient(ellipse at 50% 80%, #3a6b1e22 0%, transparent 50%);
+    }
+    body.status-open .road-badge {
+      border-color: #8fbc5a55;
+      color: #8fbc5a;
+      background: #3a6b1e33;
+    }
+    body.status-open .status-message a {
+      color: #8fbc5a;
+    }
+    body.status-open .refresh-dot {
+      background: #8fbc5a;
+    }
+
+    body.status-restrictions {
+      background-color: #7a6520;
+      color: #fef3c7;
+    }
+    body.status-restrictions::before {
+      background:
+        radial-gradient(ellipse at 20% 50%, #967d2a44 0%, transparent 50%),
+        radial-gradient(ellipse at 80% 20%, #967d2a33 0%, transparent 50%),
+        radial-gradient(ellipse at 50% 80%, #967d2a22 0%, transparent 50%);
+    }
+    body.status-restrictions .road-badge {
+      border-color: #d4a84355;
+      color: #d4a843;
+      background: #967d2a33;
+    }
+    body.status-restrictions .status-message a {
+      color: #d4a843;
+    }
+    body.status-restrictions .refresh-dot {
+      background: #d4a843;
+    }
+
+    body.status-closed {
+      background-color: #6b2039;
+      color: #f5d0d8;
+    }
+    body.status-closed::before {
+      background:
+        radial-gradient(ellipse at 20% 50%, #86305044 0%, transparent 50%),
+        radial-gradient(ellipse at 80% 20%, #86305033 0%, transparent 50%),
+        radial-gradient(ellipse at 50% 80%, #86305022 0%, transparent 50%);
+    }
+    body.status-closed .road-badge {
+      border-color: #d4637a55;
+      color: #d4637a;
+      background: #86305033;
+    }
+    body.status-closed .status-message a {
+      color: #d4637a;
+    }
+    body.status-closed .refresh-dot {
+      background: #d4637a;
+    }
+
+    body.status-unknown {
+      background-color: #374151;
+      color: #e5e7eb;
+    }
+    body.status-unknown::before {
+      background:
+        radial-gradient(ellipse at 20% 50%, #4b556344 0%, transparent 50%),
+        radial-gradient(ellipse at 80% 20%, #4b556333 0%, transparent 50%);
+    }
+    body.status-unknown .road-badge {
+      border-color: #9ca3af55;
+      color: #9ca3af;
+      background: #4b556333;
+    }
+    body.status-unknown .status-message a {
+      color: #9ca3af;
+    }
+    body.status-unknown .refresh-dot {
+      background: #9ca3af;
+    }
+
+    /* LAYOUT */
+    .container {
+      position: relative;
+      z-index: 1;
+      text-align: center;
+      padding: 2rem;
+      max-width: 800px;
+      width: 100%;
+    }
+
+    .road-badge {
+      display: inline-block;
+      margin-bottom: 1.5rem;
+      padding: 0.4rem 1.2rem;
+      border: 2px solid;
+      border-radius: 999px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      transition: all 0.8s ease;
+    }
+
+    .status-heading {
+      font-size: clamp(5rem, 18vw, 14rem);
+      font-weight: 900;
+      letter-spacing: -0.03em;
+      line-height: 0.9;
+      margin-bottom: 1.5rem;
+      transition: all 0.8s ease;
+    }
+
+    .status-message {
+      font-size: clamp(1.1rem, 3vw, 1.8rem);
+      font-weight: 400;
+      line-height: 1.5;
+      opacity: 0.9;
+      max-width: 600px;
+      margin: 0 auto;
+    }
+
+    .status-message a {
+      text-decoration: underline;
+      text-underline-offset: 3px;
+      font-weight: 600;
+      transition: opacity 0.2s ease;
+    }
+
+    .status-message a:hover {
+      opacity: 0.8;
+    }
+
+    .updated {
+      margin-top: 2.5rem;
+      font-size: 0.8rem;
+      opacity: 0.45;
+      font-weight: 300;
+    }
+
+    .refresh-dot {
+      display: inline-block;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      margin-left: 6px;
+      animation: pulse 2s ease-in-out infinite;
+      vertical-align: middle;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 0.3; }
+      50% { opacity: 1; }
+    }
+
+    /* Loading state */
+    .loading .status-heading {
+      font-size: clamp(2rem, 6vw, 4rem);
+      opacity: 0.5;
+    }
+
+    /* Ad container - ready for Google AdSense later */
+    .ad-container {
+      position: relative;
+      z-index: 1;
+      margin-top: 3rem;
+      padding: 1rem;
+      max-width: 728px;
+      width: 100%;
+      min-height: 0;
+      text-align: center;
+    }
+
+    .ad-container.has-ad {
+      min-height: 90px;
+      background: rgba(0,0,0,0.1);
+      border-radius: 8px;
+    }
+
+    /* Footer */
+    .footer {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      z-index: 1;
+      text-align: center;
+      padding: 1rem;
+      font-size: 0.7rem;
+      opacity: 0.3;
+    }
+
+    .footer a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    .footer a:hover {
+      opacity: 0.8;
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body class="loading">
+  <div class="container">
+    <div class="road-badge">Interstate 80 — Sacramento to Reno</div>
+    <h1 class="status-heading" id="heading">Checking...</h1>
+    <p class="status-message" id="message">
+      Loading current road conditions...
+    </p>
+    <p class="updated" id="updated"></p>
+  </div>
+
+  <!-- Ad space: ready for Google AdSense code later -->
+  <div class="ad-container" id="ad-container">
+    <!-- ADSENSE CODE WILL GO HERE -->
+  </div>
+
+  <div class="footer">
+    Data from <a href="https://roads.dot.ca.gov/" target="_blank" rel="noopener">Caltrans</a>.
+    Not affiliated with Caltrans or any government agency.
+    For official info, visit <a href="https://roads.dot.ca.gov/" target="_blank" rel="noopener">roads.dot.ca.gov</a>.
+  </div>
+
+  <script>
+    const CALTRANS_URL = 'https://roads.dot.ca.gov/roadscell.php?roadnumber=80';
+
+    const STATUS_CONFIG = {
+      open: {
+        heading: 'YES.',
+        message: 'I-80 is open through the Sierras.',
+        emoji: '🟢',
+        title: 'Is I-80 Open? ✅ YES'
+      },
+      restrictions: {
+        heading: 'SOME RESTRICTIONS.',
+        message: 'I-80 has some restrictions through the Sierras.',
+        emoji: '🟡',
+        title: 'Is I-80 Open? ⚠️ SOME RESTRICTIONS'
+      },
+      closed: {
+        heading: 'NO.',
+        message: 'I-80 is closed through the Sierras.',
+        emoji: '🔴',
+        title: 'Is I-80 Open? ❌ CLOSED'
+      },
+      unknown: {
+        heading: 'UNKNOWN',
+        message: 'Unable to determine I-80 status.',
+        emoji: '⚪',
+        title: 'Is I-80 Open?'
+      }
+    };
+
+    async function checkStatus() {
+      try {
+        const response = await fetch('/api/status');
+        const data = await response.json();
+        updatePage(data);
+      } catch (error) {
+        console.error('Error checking status:', error);
+        updatePage({ status: 'unknown', checkedAt: 'Unable to check' });
+      }
+    }
+
+    function updatePage(data) {
+      const config = STATUS_CONFIG[data.status] || STATUS_CONFIG.unknown;
+
+      // Remove loading and all status classes
+      document.body.classList.remove('loading', 'status-open', 'status-restrictions', 'status-closed', 'status-unknown');
+      document.body.classList.add('status-' + data.status);
+
+      // Update content
+      document.getElementById('heading').textContent = config.heading;
+      document.getElementById('message').innerHTML =
+        config.message + ' More info <a href="' + CALTRANS_URL + '" target="_blank" rel="noopener noreferrer">HERE</a>.';
+
+      document.getElementById('updated').innerHTML =
+        'Updated ' + data.checkedAt + ' Pacific <span class="refresh-dot"></span>';
+
+      // Update page title and favicon
+      document.title = config.title;
+      updateFavicon(config.emoji);
+    }
+
+    function updateFavicon(emoji) {
+      let link = document.querySelector("link[rel*='icon']");
+      if (!link) {
+        link = document.createElement('link');
+        link.rel = 'icon';
+        document.head.appendChild(link);
+      }
+      link.href = "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>" + emoji + "</text></svg>";
+    }
+
+    // Check immediately on load
+    checkStatus();
+
+    // Re-check every 3 minutes
+    setInterval(checkStatus, 180000);
+  </script>
+</body>
+</html>
