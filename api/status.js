@@ -1,143 +1,4 @@
-const fetch = require('node-fetch');
-
-// ============================================
-// FETCH DATA FROM MULTIPLE SOURCES
-// We try several approaches to get road data.
-// ============================================
-
-async function fetchFromCaltransMain() {
-  try {
-    console.log('=== Trying Caltrans Main Page ===');
-    const response = await fetch(
-      'https://roads.dot.ca.gov/roadscell.php?roadnumber=80',
-      {
-        headers: {
-          'User-Agent':
-            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-          Accept:
-            'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-          'Accept-Language': 'en-US,en;q=0.9',
-          Referer: 'https://roads.dot.ca.gov/',
-        },
-        timeout: 12000,
-        redirect: 'follow',
-      }
-    );
-
-    console.log('Main page status:', response.status);
-    const html = await response.text();
-    console.log('Main page HTML length:', html.length);
-    console.log('Main page first 500 chars:', html.substring(0, 500));
-
-    if (html.length > 200) {
-      return { source: 'caltrans-main', raw: html, type: 'html' };
-    }
-  } catch (error) {
-    console.error('Main page error:', error.message);
-  }
-  return null;
-}
-
-async function fetchFromCaltransAPI() {
-  try {
-    console.log('=== Trying Caltrans Roads API ===');
-    // This is the backend API that the Caltrans website itself calls
-    const response = await fetch(
-      'https://roads.dot.ca.gov/roadscell.php',
-      {
-        method: 'POST',
-        headers: {
-          'User-Agent':
-            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
-          'Content-Type': 'application/x-www-form-urlencoded',
-          Accept: 'text/html,*/*',
-          Referer: 'https://roads.dot.ca.gov/',
-          Origin: 'https://roads.dot.ca.gov',
-        },
-        body: 'roadnumber=80&submit=Search',
-        timeout: 12000,
-      }
-    );
-
-    console.log('API status:', response.status);
-    const html = await response.text();
-    console.log('API HTML length:', html.length);
-    console.log('API first 500 chars:', html.substring(0, 500));
-
-    if (html.length > 200) {
-      return { source: 'caltrans-post', raw: html, type: 'html' };
-    }
-  } catch (error) {
-    console.error('API error:', error.message);
-  }
-  return null;
-}
-
-async function fetchFromQuickMap() {
-  try {
-    console.log('=== Trying Caltrans QuickMap API ===');
-    const response = await fetch(
-      'https://quickmap.dot.ca.gov/api/roadConditions?format=json',
-      {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)',
-          Accept: 'application/json',
-        },
-        timeout: 12000,
-      }
-    );
-
-    console.log('QuickMap status:', response.status);
-    const text = await response.text();
-    console.log('QuickMap response length:', text.length);
-    console.log('QuickMap first 500 chars:', text.substring(0, 500));
-
-    if (text.length > 100) {
-      return { source: 'quickmap', raw: text, type: 'json' };
-    }
-  } catch (error) {
-    console.error('QuickMap error:', error.message);
-  }
-  return null;
-}
-
-async function fetchFromCWWP() {
-  try {
-    console.log('=== Trying Caltrans CWWP2 ===');
-    // This is another Caltrans endpoint
-    const response = await fetch(
-      'https://cwwp2.dot.ca.gov/data/d3/cctv/cctvStatusD03.json',
-      {
-        headers: {
-          'User-Agent': 'Mozilla/5.0',
-          Accept: 'application/json',
-        },
-        timeout: 10000,
-      }
-    );
-
-    console.log('CWWP status:', response.status);
-    // We won't use this for conditions, but it tells us if Caltrans servers respond
-    return null;
-  } catch (error) {
-    console.error('CWWP error:', error.message);
-    return null;
-  }
-}
-
-async function fetchAllSources() {
-  // Try all sources, return first one that works
-  const result =
-    (await fetchFromCaltransMain()) ||
-    (await fetchFromCaltransAPI()) ||
-    (await fetchFromQuickMap());
-
-  return result;
-}
-
-// ============================================
-// TEXT EXTRACTION
-// ============================================
+var fetch = require('node-fetch');
 
 function stripHTML(html) {
   return html
@@ -154,255 +15,406 @@ function stripHTML(html) {
     .trim();
 }
 
-// ============================================
-// STATUS ANALYSIS
-// ============================================
+function fetchCaltransData() {
+  return fetch('https://roads.dot.ca.gov/roadscell.php?roadnumber=80', {
+    headers: {
+      'User-Agent':
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+      Accept:
+        'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      'Accept-Language': 'en-US,en;q=0.9',
+      Referer: 'https://roads.dot.ca.gov/',
+    },
+    timeout: 15000,
+    redirect: 'follow',
+  })
+    .then(function (response) {
+      console.log('Caltrans GET status:', response.status);
+      return response.text();
+    })
+    .then(function (html) {
+      console.log('Caltrans GET length:', html.length);
+      if (html.length > 200) {
+        return html;
+      }
+      return null;
+    })
+    .catch(function (error) {
+      console.error('Caltrans GET error:', error.message);
+      return null;
+    });
+}
+
+function fetchCaltransPost() {
+  return fetch('https://roads.dot.ca.gov/roadscell.php', {
+    method: 'POST',
+    headers: {
+      'User-Agent':
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+      'Content-Type': 'application/x-www-form-urlencoded',
+      Referer: 'https://roads.dot.ca.gov/',
+      Origin: 'https://roads.dot.ca.gov',
+    },
+    body: 'roadnumber=80&submit=Search',
+    timeout: 15000,
+  })
+    .then(function (response) {
+      console.log('Caltrans POST status:', response.status);
+      return response.text();
+    })
+    .then(function (html) {
+      console.log('Caltrans POST length:', html.length);
+      if (html.length > 200) {
+        return html;
+      }
+      return null;
+    })
+    .catch(function (error) {
+      console.error('Caltrans POST error:', error.message);
+      return null;
+    });
+}
 
 function analyzeText(text) {
-  const upper = text.toUpperCase();
-  const details = [];
-  let closureScore = 0;
-  let restrictionScore = 0;
-  let openScore = 0;
+  var upper = text.toUpperCase();
+  var closureScore = 0;
+  var restrictionScore = 0;
+  var openScore = 0;
 
-  // --- CLOSURE SIGNALS ---
-  const closureChecks = [
-    { regex: /IS\s+CLOSED\s+(?:TO\s+)?(?:EASTBOUND|WESTBOUND|ALL|BOTH)?\s*(?:TRAFFIC)?/gi, weight: 10 },
-    { regex: /CLOSED\s+(?:AT|FROM|BETWEEN|IN|NEAR)\b/gi, weight: 8 },
-    { regex: /CLOSED\s+(?:TO\s+(?:EAST|WEST)BOUND)/gi, weight: 8 },
-    { regex: /ROAD\s+(?:IS\s+)?CLOSED/gi, weight: 10 },
-    { regex: /REMAINS?\s+CLOSED/gi, weight: 10 },
-    { regex: /IMPASSABLE/gi, weight: 8 },
-    { regex: /NO\s+ESTIMATED\s+(?:TIME|OPENING)/gi, weight: 8 },
-  ];
+  // ============================================
+  // KEY DISTINCTION:
+  // "closed to tractor-semitrailer" = RESTRICTION (yellow)
+  // "closed to ALL traffic" in BOTH directions = CLOSED (red)
+  // ============================================
 
-  // --- RESTRICTION SIGNALS ---
-  const restrictionChecks = [
+  // First: detect closures that are ONLY for trucks/semis
+  // These are RESTRICTIONS, not full closures
+  var truckOnlyClosures = 0;
+  var truckClosurePattern = /CLOSED\s+(?:EASTBOUND\s+|WESTBOUND\s+)?(?:TO\s+)?ALL\s+TRACTOR[\s-]*SEMI[\s-]*TRAILER/gi;
+  var truckMatches = upper.match(truckClosurePattern);
+  if (truckMatches) {
+    truckOnlyClosures = truckMatches.length;
+    console.log('Truck-only closures found:', truckOnlyClosures);
+  }
+
+  // Also catch "closed to trucks" patterns
+  var truckClosurePattern2 = /CLOSED\s+(?:TO\s+)?(?:ALL\s+)?TRUCKS/gi;
+  var truckMatches2 = upper.match(truckClosurePattern2);
+  if (truckMatches2) {
+    truckOnlyClosures += truckMatches2.length;
+    console.log('Truck closures (pattern 2):', truckMatches2.length);
+  }
+
+  // Detect FULL closures to ALL traffic (not just trucks)
+  // These patterns indicate the road is closed to everyone
+  var fullClosureEastbound = false;
+  var fullClosureWestbound = false;
+
+  // "Is closed to eastbound traffic" (without "tractor" or "truck" nearby)
+  var eastClosedMatches = upper.match(/(?:IS\s+)?CLOSED\s+(?:TO\s+)?EASTBOUND\s+TRAFFIC/gi);
+  if (eastClosedMatches) {
+    // Check if this is near "tractor-semitrailer" — if so, it's truck-only
+    var eastContext = '';
+    var eastIdx = upper.indexOf('CLOSED');
+    if (eastIdx !== -1) {
+      eastContext = upper.substring(Math.max(0, eastIdx - 30), Math.min(upper.length, eastIdx + 150));
+    }
+    if (eastContext.indexOf('TRACTOR') === -1 && eastContext.indexOf('TRUCK') === -1 && eastContext.indexOf('SEMI') === -1) {
+      fullClosureEastbound = true;
+      console.log('FULL eastbound closure detected');
+    } else {
+      console.log('Eastbound closure is truck-only');
+    }
+  }
+
+  // Check for generic eastbound closure
+  var eastClosedGeneric = upper.match(/IS\s+CLOSED\s+(?:TO\s+)?EASTBOUND(?!\s+TO\s+ALL\s+TRACTOR)/gi);
+  if (eastClosedGeneric) {
+    // Verify not truck-only by checking surrounding context
+    var idx = upper.search(/IS\s+CLOSED\s+(?:TO\s+)?EASTBOUND/i);
+    if (idx !== -1) {
+      var ctx = upper.substring(idx, Math.min(upper.length, idx + 200));
+      if (ctx.indexOf('TRACTOR') === -1 && ctx.indexOf('TRUCK') === -1 && ctx.indexOf('SEMI-TRAILER') === -1 && ctx.indexOf('SEMITRAILER') === -1) {
+        fullClosureEastbound = true;
+        console.log('FULL eastbound closure (generic pattern)');
+      }
+    }
+  }
+
+  var westClosedMatches = upper.match(/(?:IS\s+)?CLOSED\s+(?:TO\s+)?WESTBOUND\s+TRAFFIC/gi);
+  if (westClosedMatches) {
+    var westContext = '';
+    var westIdx = upper.lastIndexOf('CLOSED');
+    if (westIdx !== -1) {
+      westContext = upper.substring(Math.max(0, westIdx - 30), Math.min(upper.length, westIdx + 150));
+    }
+    if (westContext.indexOf('TRACTOR') === -1 && westContext.indexOf('TRUCK') === -1 && westContext.indexOf('SEMI') === -1) {
+      fullClosureWestbound = true;
+      console.log('FULL westbound closure detected');
+    } else {
+      console.log('Westbound closure is truck-only');
+    }
+  }
+
+  // Check for generic westbound closure
+  var westClosedGeneric = upper.match(/IS\s+CLOSED\s+(?:TO\s+)?WESTBOUND(?!\s+TO\s+ALL\s+TRACTOR)/gi);
+  if (westClosedGeneric) {
+    var idx2 = upper.search(/IS\s+CLOSED\s+(?:TO\s+)?WESTBOUND/i);
+    if (idx2 !== -1) {
+      var ctx2 = upper.substring(idx2, Math.min(upper.length, idx2 + 200));
+      if (ctx2.indexOf('TRACTOR') === -1 && ctx2.indexOf('TRUCK') === -1 && ctx2.indexOf('SEMI-TRAILER') === -1 && ctx2.indexOf('SEMITRAILER') === -1) {
+        fullClosureWestbound = true;
+        console.log('FULL westbound closure (generic pattern)');
+      }
+    }
+  }
+
+  // Check for "closed at [location]" without direction (means both)
+  var genericClosed = upper.match(/IS\s+CLOSED\s+(?:AT|FROM|BETWEEN)\s+/gi);
+  if (genericClosed) {
+    // Check context for each match
+    var searchStart = 0;
+    for (var g = 0; g < genericClosed.length; g++) {
+      var gIdx = upper.indexOf(genericClosed[g], searchStart);
+      if (gIdx !== -1) {
+        var gCtx = upper.substring(Math.max(0, gIdx - 50), Math.min(upper.length, gIdx + 200));
+        if (gCtx.indexOf('TRACTOR') === -1 && gCtx.indexOf('TRUCK') === -1 && gCtx.indexOf('SEMITRAILER') === -1 && gCtx.indexOf('SEMI-TRAILER') === -1) {
+          // This is a full closure without direction = both directions
+          fullClosureEastbound = true;
+          fullClosureWestbound = true;
+          console.log('FULL both-direction closure detected (generic)');
+        }
+        searchStart = gIdx + 1;
+      }
+    }
+  }
+
+  var bothDirectionsFullyClosed = fullClosureEastbound && fullClosureWestbound;
+  console.log('Full closure analysis:', {
+    fullClosureEastbound: fullClosureEastbound,
+    fullClosureWestbound: fullClosureWestbound,
+    bothDirectionsFullyClosed: bothDirectionsFullyClosed,
+    truckOnlyClosures: truckOnlyClosures,
+  });
+
+  // ============================================
+  // RESTRICTION SIGNALS
+  // ============================================
+  var restrictionChecks = [
     { regex: /CHAINS?\s+(?:ARE\s+)?REQUIRED/gi, weight: 8 },
     { regex: /CHAIN\s+CONTROL/gi, weight: 8 },
     { regex: /\bR[\s-]?1\b/g, weight: 6 },
     { regex: /\bR[\s-]?2\b/g, weight: 8 },
     { regex: /\bR[\s-]?3\b/g, weight: 10 },
-    { regex: /SNOW\s*TIRES?\s+(?:ON\s+ALL|REQUIRED)/gi, weight: 5 },
+    { regex: /SNOW\s*TIRES?/gi, weight: 5 },
     { regex: /TRACTION\s+DEVICES?/gi, weight: 5 },
     { regex: /(?:4|FOUR)[\s-]*WHEEL[\s-]*DRIVE/gi, weight: 4 },
     { regex: /SPIN\s*-?\s*OUTS?/gi, weight: 5 },
     { regex: /TRUCKS?\s+(?:ARE\s+)?(?:BEING\s+)?SCREENED/gi, weight: 5 },
     { regex: /MAXIMUM\s+CHAINS/gi, weight: 6 },
-    { regex: /MUST\s+HAVE.*CHAINS/gi, weight: 6 },
     { regex: /PERMIT\s+LOADS?\s+(?:ARE\s+)?PROHIBITED/gi, weight: 4 },
-    { regex: /(?:USE\s+(?:AN\s+)?)?ALTERNATE\s+ROUTE/gi, weight: 5 },
+    { regex: /ALTERNATE\s+ROUTE/gi, weight: 5 },
     { regex: /BRAKE\s+CHECK/gi, weight: 3 },
-    { regex: /DUE\s+TO\s+(?:SNOW|ICE|WEATHER|STORM|WINTER|HEAVY)/gi, weight: 4 },
+    { regex: /DUE\s+TO\s+(?:SNOW|ICE|WEATHER|STORM)/gi, weight: 4 },
     { regex: /ONE[\s-]*WAY\s+TRAFFIC/gi, weight: 5 },
     { regex: /CONVOY/gi, weight: 5 },
-    { regex: /ESCORT(?:S|ED)?/gi, weight: 3 },
     { regex: /PILOT\s+CAR/gi, weight: 4 },
-    { regex: /EXPECT\s+(?:MAJOR\s+)?DELAYS/gi, weight: 3 },
     { regex: /HAZARDOUS/gi, weight: 4 },
+    { regex: /EXPECT\s+(?:MAJOR\s+)?DELAYS/gi, weight: 3 },
   ];
 
-  // --- OPEN SIGNALS ---
-  const openChecks = [
+  // OPEN SIGNALS
+  var openChecks = [
     { regex: /NO\s+(?:TRAFFIC\s+)?RESTRICTIONS/gi, weight: 10 },
-    { regex: /OPEN\s+(?:AND\s+)?(?:CLEAR|WITH\s+NO)/gi, weight: 8 },
+    { regex: /OPEN\s+(?:AND\s+)?CLEAR/gi, weight: 8 },
     { regex: /ALL\s+LANES?\s+OPEN/gi, weight: 6 },
   ];
 
-  // Score everything
-  for (const check of closureChecks) {
-    const matches = upper.match(check.regex);
+  var i, matches;
+
+  // Truck-only closures count as restrictions
+  if (truckOnlyClosures > 0) {
+    restrictionScore += 8 * truckOnlyClosures;
+    console.log('Truck closures add to restriction score:', 8 * truckOnlyClosures);
+  }
+
+  // Score restrictions
+  for (i = 0; i < restrictionChecks.length; i++) {
+    matches = upper.match(restrictionChecks[i].regex);
     if (matches) {
-      let count = matches.length;
-      if (/CLOSED\s+TO\s+OVERSIZ/i.test(upper)) count = Math.max(0, count - 1);
-      if (/RAMP\s+(?:IS\s+)?CLOSED/i.test(upper)) count = Math.max(0, count - 1);
-      if (/REST\s*AREA.*CLOSED/i.test(upper)) count = Math.max(0, count - 1);
-      if (count > 0) {
-        closureScore += check.weight * count;
-        console.log('CLOSURE:', check.regex.toString(), '×', count, '= +' + (check.weight * count));
-      }
+      restrictionScore += restrictionChecks[i].weight * matches.length;
+      console.log('RESTRICTION:', restrictionChecks[i].regex.toString(), 'x' + matches.length);
     }
   }
 
-  for (const check of restrictionChecks) {
-    const matches = upper.match(check.regex);
+  // Score open
+  for (i = 0; i < openChecks.length; i++) {
+    matches = upper.match(openChecks[i].regex);
     if (matches) {
-      restrictionScore += check.weight * matches.length;
-      console.log('RESTRICTION:', check.regex.toString(), '×', matches.length, '= +' + (check.weight * matches.length));
+      openScore += openChecks[i].weight * matches.length;
+      console.log('OPEN:', openChecks[i].regex.toString(), 'x' + matches.length);
     }
   }
 
-  for (const check of openChecks) {
-    const matches = upper.match(check.regex);
-    if (matches) {
-      openScore += check.weight * matches.length;
-      console.log('OPEN:', check.regex.toString(), '×', matches.length, '= +' + (check.weight * matches.length));
-    }
+  console.log('FINAL SCORES - Restriction:', restrictionScore, 'Open:', openScore);
+
+  // ============================================
+  // DETERMINE STATUS
+  // ============================================
+
+  // RED: ONLY when both directions are fully closed to ALL traffic
+  if (bothDirectionsFullyClosed) {
+    return {
+      status: 'closed',
+      scores: { restriction: restrictionScore, open: openScore },
+      note: 'Both directions closed to all traffic',
+    };
   }
 
-  // Direction analysis
-  const eastClosed = /CLOSED\s+(?:TO\s+)?EASTBOUND/i.test(upper) || /IS\s+CLOSED\s+(?:TO\s+)?EASTBOUND/i.test(upper);
-  const westClosed = /CLOSED\s+(?:TO\s+)?WESTBOUND/i.test(upper) || /IS\s+CLOSED\s+(?:TO\s+)?WESTBOUND/i.test(upper);
-  const bothClosed = eastClosed && westClosed;
-  const allClosed = /IS\s+CLOSED(?!\s+(?:TO\s+)?(?:EAST|WEST)BOUND)/i.test(upper) && closureScore >= 10;
-
-  console.log('SCORES -> Closure:', closureScore, 'Restriction:', restrictionScore, 'Open:', openScore);
-  console.log('DIRECTIONS -> East closed:', eastClosed, 'West closed:', westClosed, 'Both:', bothClosed);
-
-  // --- DETERMINE STATUS ---
-
-  // Both directions fully closed = RED
-  if (bothClosed || (allClosed && restrictionScore === 0)) {
-    return { status: 'closed', details, scores: { closure: closureScore, restriction: restrictionScore, open: openScore } };
-  }
-
-  // Partial closure + restrictions = YELLOW
-  if (closureScore > 0 && restrictionScore > 0) {
-    return { status: 'restrictions', details, scores: { closure: closureScore, restriction: restrictionScore, open: openScore }, note: 'Partial closure with restrictions' };
-  }
-
-  // One direction closed = YELLOW
-  if ((eastClosed && !westClosed) || (!eastClosed && westClosed)) {
-    return { status: 'restrictions', details, scores: { closure: closureScore, restriction: restrictionScore, open: openScore }, note: 'One direction closed' };
-  }
-
-  // Strong closure signal only = RED
-  if (closureScore >= 10) {
-    return { status: 'closed', details, scores: { closure: closureScore, restriction: restrictionScore, open: openScore } };
-  }
-
-  // Any closure at all = YELLOW minimum
-  if (closureScore > 0) {
-    return { status: 'restrictions', details, scores: { closure: closureScore, restriction: restrictionScore, open: openScore } };
-  }
-
-  // Restrictions = YELLOW
+  // YELLOW: Any kind of restriction, partial closure, truck closure, chains, etc.
   if (restrictionScore >= 3) {
-    return { status: 'restrictions', details, scores: { closure: closureScore, restriction: restrictionScore, open: openScore } };
+    return {
+      status: 'restrictions',
+      scores: { restriction: restrictionScore, open: openScore },
+    };
   }
 
-  // Explicitly open = GREEN
+  // YELLOW: One direction fully closed (even to all traffic) but other is open/restricted
+  if (fullClosureEastbound || fullClosureWestbound) {
+    return {
+      status: 'restrictions',
+      scores: { restriction: restrictionScore, open: openScore },
+      note: 'One direction closed to all traffic',
+    };
+  }
+
+  // GREEN: Explicitly open
   if (openScore >= 5) {
-    return { status: 'open', details: ['No restrictions on I-80'], scores: { closure: 0, restriction: 0, open: openScore } };
+    return {
+      status: 'open',
+      scores: { restriction: 0, open: openScore },
+    };
   }
 
-  // Fallback: check for ANY concerning content
-  const sierraLocations = ['COLFAX', 'ALTA', 'EMIGRANT GAP', 'DONNER', 'TRUCKEE', 'FLORISTON', 'BAXTER', 'APPLEGATE', 'KINGVALE', 'SODA SPRINGS', 'NORDEN', 'NYACK', 'GOLD RUN', 'CISCO', 'PLACER CO', 'NEVADA STATE'];
-  const hasSierraContent = sierraLocations.some(loc => upper.includes(loc));
-
-  if (hasSierraContent && closureScore === 0 && restrictionScore === 0) {
-    return { status: 'open', details: ['No restrictions detected'], scores: { closure: 0, restriction: 0, open: 0 }, note: 'Sierra locations found but no restriction signals' };
+  // GREEN: Sierra content found but no bad signals
+  var sierraLocations = ['COLFAX', 'DONNER', 'TRUCKEE', 'BAXTER', 'APPLEGATE', 'PLACER CO', 'NEVADA STATE'];
+  var hasSierraContent = false;
+  for (i = 0; i < sierraLocations.length; i++) {
+    if (upper.indexOf(sierraLocations[i]) !== -1) {
+      hasSierraContent = true;
+      break;
+    }
   }
 
-  // If page had real content but nothing matched
-  if (text.length > 500) {
-    return { status: 'open', details: ['No restrictions detected on I-80'], scores: { closure: 0, restriction: 0, open: 0 }, note: 'Page had content but no signals detected - assuming open' };
+  if (hasSierraContent) {
+    return {
+      status: 'open',
+      scores: { restriction: 0, open: 0 },
+      note: 'Sierra locations found, no restrictions detected',
+    };
   }
 
+  // GREEN: Page had real content, nothing bad found
+  if (upper.length > 500) {
+    return {
+      status: 'open',
+      scores: { restriction: 0, open: 0 },
+      note: 'Content found but no restriction signals',
+    };
+  }
+
+  // UNKNOWN: Could not read the page
   return {
     status: 'unknown',
-    details: ['Could not read Caltrans road conditions.'],
-    scores: { closure: 0, restriction: 0, open: 0 },
-    debug: { textLength: text.length, hasSierraContent, sample: text.substring(0, 300) }
+    scores: { restriction: 0, open: 0 },
+    debug: { textLength: upper.length },
   };
 }
 
-// ============================================
-// MAIN HANDLER
-// ============================================
-
-module.exports = async function handler(req, res) {
+module.exports = function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Cache-Control', 's-maxage=90, stale-while-revalidate=30');
 
-  // Debug mode: add ?debug=true to see raw data
-  const isDebug = req.query && req.query.debug === 'true';
+  var isDebug = req.query && req.query.debug === 'true';
 
-  try {
-    console.log('\n\n========= NEW REQUEST =========');
-    console.log('Time:', new Date().toISOString());
+  console.log('\n========= NEW REQUEST =========');
 
-    const fetchResult = await fetchAllSources();
+  return fetchCaltransData()
+    .then(function (html) {
+      if (html) {
+        return { source: 'caltrans-get', raw: html };
+      }
+      console.log('GET failed, trying POST...');
+      return fetchCaltransPost().then(function (html2) {
+        if (html2) {
+          return { source: 'caltrans-post', raw: html2 };
+        }
+        return null;
+      });
+    })
+    .then(function (result) {
+      var now = new Date();
+      var pacificTime = now.toLocaleString('en-US', {
+        timeZone: 'America/Los_Angeles',
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: true,
+      });
 
-    if (!fetchResult) {
-      console.log('ALL SOURCES FAILED - No data retrieved');
+      if (!result) {
+        console.log('ALL SOURCES FAILED');
+        return res.status(200).json({
+          status: 'unknown',
+          details: ['Unable to reach Caltrans website.'],
+          checkedAt: pacificTime,
+          timestamp: now.toISOString(),
+        });
+      }
 
-      const responseData = {
+      console.log('Got data from:', result.source, 'length:', result.raw.length);
+
+      var plainText = stripHTML(result.raw);
+      console.log('Plain text length:', plainText.length);
+      console.log('Plain text sample:', plainText.substring(0, 1500));
+
+      var statusData = analyzeText(plainText);
+
+      console.log('FINAL STATUS:', statusData.status);
+
+      var response = {
+        status: statusData.status,
+        scores: statusData.scores,
+        note: statusData.note,
+        source: result.source,
+        checkedAt: pacificTime,
+        timestamp: now.toISOString(),
+      };
+
+      if (isDebug) {
+        response.debug = {
+          rawLength: result.raw.length,
+          plainTextLength: plainText.length,
+          plainTextSample: plainText.substring(0, 3000),
+        };
+      }
+
+      return res.status(200).json(response);
+    })
+    .catch(function (error) {
+      console.error('HANDLER ERROR:', error);
+      return res.status(200).json({
         status: 'unknown',
-        details: ['Unable to reach Caltrans. All data sources failed.'],
+        details: ['Server error: ' + error.message],
         checkedAt: new Date().toLocaleString('en-US', {
           timeZone: 'America/Los_Angeles',
-          month: 'short', day: 'numeric', year: 'numeric',
-          hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true,
+          hour: 'numeric',
+          minute: '2-digit',
+          hour12: true,
         }),
-        timestamp: new Date().toISOString(),
-        debug: isDebug ? { error: 'All fetch attempts failed' } : undefined,
-      };
-
-      return res.status(200).json(responseData);
-    }
-
-    console.log('Got data from source:', fetchResult.source);
-    console.log('Data type:', fetchResult.type);
-    console.log('Raw data length:', fetchResult.raw.length);
-
-    // Extract plain text
-    let plainText;
-    if (fetchResult.type === 'html') {
-      plainText = stripHTML(fetchResult.raw);
-    } else {
-      plainText = fetchResult.raw;
-    }
-
-    console.log('Plain text length:', plainText.length);
-    console.log('=== PLAIN TEXT (first 3000) ===');
-    console.log(plainText.substring(0, 3000));
-    console.log('=== END PLAIN TEXT ===');
-
-    // Analyze
-    const statusData = analyzeText(plainText);
-
-    const now = new Date();
-    const pacificTime = now.toLocaleString('en-US', {
-      timeZone: 'America/Los_Angeles',
-      month: 'short', day: 'numeric', year: 'numeric',
-      hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true,
+      });
     });
-
-    console.log('\n=== FINAL RESULT ===');
-    console.log('Status:', statusData.status);
-    console.log('Scores:', statusData.scores);
-    console.log('====================\n');
-
-    const responseData = {
-      ...statusData,
-      source: fetchResult.source,
-      checkedAt: pacificTime,
-      timestamp: now.toISOString(),
-    };
-
-    // In debug mode, include extra info
-    if (isDebug) {
-      responseData.debug = {
-        source: fetchResult.source,
-        rawLength: fetchResult.raw.length,
-        plainTextLength: plainText.length,
-        plainTextSample: plainText.substring(0, 2000),
-        rawSample: fetchResult.raw.substring(0, 2000),
-      };
-    }
-
-    res.status(200).json(responseData);
-  } catch (error) {
-    console.error('HANDLER ERROR:', error);
-    res.status(500).json({
-      status: 'unknown',
-      details: ['Server error: ' + error.message],
-      checkedAt: new Date().toLocaleString('en-US', {
-        timeZone: 'America/Los_Angeles',
-        hour: 'numeric', minute: '2-digit', hour12: true,
-      }),
-      error: error.message,
-    });
-  }
 };
