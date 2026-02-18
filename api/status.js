@@ -77,129 +77,185 @@ function fetchCaltransPost() {
 
 function analyzeText(text) {
   var upper = text.toUpperCase();
-  var closureScore = 0;
+
+  // ============================================
+  // STEP 1: Extract ONLY the Northern California
+  // / Sierra Nevada section
+  // ============================================
+  var sierraSection = upper;
+  var ncStart = upper.indexOf('NORTHERN CALIFORNIA');
+  if (ncStart !== -1) {
+    // Find the end of this section (next section or end of text)
+    var nextSection = upper.indexOf('BUSINESS 80', ncStart + 20);
+    if (nextSection === -1) {
+      nextSection = upper.indexOf('[IN THE', ncStart + 20);
+    }
+    if (nextSection === -1) {
+      nextSection = upper.length;
+    }
+    sierraSection = upper.substring(ncStart, nextSection);
+    console.log('Extracted Sierra section:', sierraSection.length, 'chars');
+    console.log('Sierra section text:', sierraSection);
+  } else {
+    console.log('Could not find Northern California section, using full text');
+  }
+
+  // ============================================
+  // STEP 2: Break into individual statements
+  // Split on common Caltrans sentence boundaries
+  // ============================================
+  var statements = sierraSection
+    .split(/(?:(?:^|\s)IS\s+CLOSED|CHAINS?\s+(?:ARE\s+)?REQUIRED|ALL\s+(?:EAST|WEST)BOUND|PLEASE\s+|MOTORISTS?\s+|NO\s+TRAFFIC)/i)
+    .map(function(s) { return s.trim(); })
+    .filter(function(s) { return s.length > 10; });
+
+  // Better approach: find each sentence-like chunk
+  // Caltrans separates statements, so let's re-scan the sierra section
+  // for individual condition statements
+
+  console.log('\n=== ANALYZING SIERRA SECTION ===');
+  console.log(sierraSection);
+  console.log('================================\n');
+
+  // ============================================
+  // STEP 3: Look for FULL road closures
+  // (closed to ALL traffic, not just trucks)
+  // ============================================
+
+  var hasFullClosure = false;
+
+  // Pattern A: "Is closed from [place] to [place]" — no direction = both directions = FULL CLOSURE
+  // But we need to make sure it's not "closed eastbound" or "closed to trucks"
+  var closedFromPattern = /IS\s+CLOSED\s+FROM\s+/gi;
+  var closedFromMatches = [];
+  var cfMatch;
+  while ((cfMatch = closedFromPattern.exec(sierraSection)) !== null) {
+    closedFromMatches.push(cfMatch.index);
+  }
+
+  for (var cf = 0; cf < closedFromMatches.length; cf++) {
+    // Look at what comes BEFORE "Is closed from" (up to 80 chars)
+    var beforeText = sierraSection.substring(Math.max(0, closedFromMatches[cf] - 80), closedFromMatches[cf]);
+    // Look at what comes AFTER (up to 300 chars)
+    var afterText = sierraSection.substring(closedFromMatches[cf], Math.min(sierraSection.length, closedFromMatches[cf] + 300));
+
+    console.log('Checking "closed from" - before:', beforeText.substring(beforeText.length - 40));
+    console.log('Checking "closed from" - after:', afterText.substring(0, 150));
+
+    // If "eastbound" or "westbound" appears right before, it's directional
+    var isDirectional = /(?:EASTBOUND|WESTBOUND)\s*$/.test(beforeText);
+    // If "tractor" or "truck" or "semi" appears nearby, it's truck-only
+    var isTruckOnly = /TRACTOR|SEMI|TRUCK|COMMERCIAL/.test(afterText.substring(0, 150));
+
+    if (!isDirectional && !isTruckOnly) {
+      hasFullClosure = true;
+      console.log('>>> FULL CLOSURE DETECTED: "Is closed from..." with no direction and not truck-only');
+    } else {
+      console.log('>>> Skipped: directional=' + isDirectional + ' truckOnly=' + isTruckOnly);
+    }
+  }
+
+  // Pattern B: "Is closed at [place]" — no direction = FULL CLOSURE
+  var closedAtPattern = /IS\s+CLOSED\s+AT\s+/gi;
+  var closedAtMatches = [];
+  var caMatch;
+  while ((caMatch = closedAtPattern.exec(sierraSection)) !== null) {
+    closedAtMatches.push(caMatch.index);
+  }
+
+  for (var ca = 0; ca < closedAtMatches.length; ca++) {
+    var beforeAt = sierraSection.substring(Math.max(0, closedAtMatches[ca] - 80), closedAtMatches[ca]);
+    var afterAt = sierraSection.substring(closedAtMatches[ca], Math.min(sierraSection.length, closedAtMatches[ca] + 300));
+
+    var isDirectionalAt = /(?:EASTBOUND|WESTBOUND)\s*$/.test(beforeAt);
+    var isTruckAt = /TRACTOR|SEMI|TRUCK|COMMERCIAL/.test(afterAt.substring(0, 150));
+
+    if (!isDirectionalAt && !isTruckAt) {
+      hasFullClosure = true;
+      console.log('>>> FULL CLOSURE DETECTED: "Is closed at..." with no direction');
+    }
+  }
+
+  // Pattern C: "Is closed between [place] and [place]"
+  var closedBetweenPattern = /IS\s+CLOSED\s+BETWEEN\s+/gi;
+  var cbMatch;
+  while ((cbMatch = closedBetweenPattern.exec(sierraSection)) !== null) {
+    var beforeBw = sierraSection.substring(Math.max(0, cbMatch.index - 80), cbMatch.index);
+    var afterBw = sierraSection.substring(cbMatch.index, Math.min(sierraSection.length, cbMatch.index + 300));
+
+    var isDirectionalBw = /(?:EASTBOUND|WESTBOUND)\s*$/.test(beforeBw);
+    var isTruckBw = /TRACTOR|SEMI|TRUCK|COMMERCIAL/.test(afterBw.substring(0, 150));
+
+    if (!isDirectionalBw && !isTruckBw) {
+      hasFullClosure = true;
+      console.log('>>> FULL CLOSURE DETECTED: "Is closed between..."');
+    }
+  }
+
+  // Pattern D: "Is closed due to [reason]" — no direction = FULL CLOSURE
+  var closedDuePattern = /IS\s+CLOSED\s+DUE\s+TO\s+/gi;
+  var cdMatch;
+  while ((cdMatch = closedDuePattern.exec(sierraSection)) !== null) {
+    var beforeDue = sierraSection.substring(Math.max(0, cdMatch.index - 80), cdMatch.index);
+    var afterDue = sierraSection.substring(cdMatch.index, Math.min(sierraSection.length, cdMatch.index + 300));
+
+    var isDirectionalDue = /(?:EASTBOUND|WESTBOUND)\s*$/.test(beforeDue);
+    var isTruckDue = /TRACTOR|SEMI|TRUCK|COMMERCIAL/.test(afterDue.substring(0, 150));
+
+    if (!isDirectionalDue && !isTruckDue) {
+      hasFullClosure = true;
+      console.log('>>> FULL CLOSURE DETECTED: "Is closed due to..."');
+    }
+  }
+
+  // Pattern E: "Is closed in both directions"
+  if (/IS\s+CLOSED\s+(?:IN\s+)?BOTH\s+DIRECTIONS/i.test(sierraSection)) {
+    hasFullClosure = true;
+    console.log('>>> FULL CLOSURE DETECTED: "Is closed in both directions"');
+  }
+
+  // Pattern F: Check if both eastbound AND westbound are separately closed to all traffic
+  var eastFullClosed = false;
+  var westFullClosed = false;
+
+  // "Is closed to eastbound traffic" or "Is closed eastbound" (not truck-only)
+  var eastClosedPattern = /IS\s+CLOSED\s+(?:TO\s+)?EASTBOUND\s+(?:TRAFFIC)?/gi;
+  var ecMatch;
+  while ((ecMatch = eastClosedPattern.exec(sierraSection)) !== null) {
+    var ecAfter = sierraSection.substring(ecMatch.index, Math.min(sierraSection.length, ecMatch.index + 200));
+    if (ecAfter.indexOf('TRACTOR') === -1 && ecAfter.indexOf('SEMI') === -1 && ecAfter.indexOf('TRUCK') === -1 && ecAfter.indexOf('COMMERCIAL') === -1) {
+      eastFullClosed = true;
+      console.log('>>> Eastbound FULL closure detected');
+    }
+  }
+
+  // Also check "closed eastbound to all tractor" — this is truck only, NOT full
+  // (already handled by the truck check above)
+
+  var westClosedPattern = /IS\s+CLOSED\s+(?:TO\s+)?WESTBOUND\s+(?:TRAFFIC)?/gi;
+  var wcMatch;
+  while ((wcMatch = westClosedPattern.exec(sierraSection)) !== null) {
+    var wcAfter = sierraSection.substring(wcMatch.index, Math.min(sierraSection.length, wcMatch.index + 200));
+    if (wcAfter.indexOf('TRACTOR') === -1 && wcAfter.indexOf('SEMI') === -1 && wcAfter.indexOf('TRUCK') === -1 && wcAfter.indexOf('COMMERCIAL') === -1) {
+      westFullClosed = true;
+      console.log('>>> Westbound FULL closure detected');
+    }
+  }
+
+  if (eastFullClosed && westFullClosed) {
+    hasFullClosure = true;
+    console.log('>>> FULL CLOSURE: Both east and west separately closed to all traffic');
+  }
+
+  console.log('\n=== CLOSURE RESULT: hasFullClosure =', hasFullClosure, '===\n');
+
+  // ============================================
+  // STEP 4: Score restrictions
+  // ============================================
+
   var restrictionScore = 0;
   var openScore = 0;
 
-  // ============================================
-  // KEY DISTINCTION:
-  // "closed to tractor-semitrailer" = RESTRICTION (yellow)
-  // "closed to ALL traffic" in BOTH directions = CLOSED (red)
-  // ============================================
-
-  // First: detect closures that are ONLY for trucks/semis
-  // These are RESTRICTIONS, not full closures
-  var truckOnlyClosures = 0;
-  var truckClosurePattern = /CLOSED\s+(?:EASTBOUND\s+|WESTBOUND\s+)?(?:TO\s+)?ALL\s+TRACTOR[\s-]*SEMI[\s-]*TRAILER/gi;
-  var truckMatches = upper.match(truckClosurePattern);
-  if (truckMatches) {
-    truckOnlyClosures = truckMatches.length;
-    console.log('Truck-only closures found:', truckOnlyClosures);
-  }
-
-  // Also catch "closed to trucks" patterns
-  var truckClosurePattern2 = /CLOSED\s+(?:TO\s+)?(?:ALL\s+)?TRUCKS/gi;
-  var truckMatches2 = upper.match(truckClosurePattern2);
-  if (truckMatches2) {
-    truckOnlyClosures += truckMatches2.length;
-    console.log('Truck closures (pattern 2):', truckMatches2.length);
-  }
-
-  // Detect FULL closures to ALL traffic (not just trucks)
-  // These patterns indicate the road is closed to everyone
-  var fullClosureEastbound = false;
-  var fullClosureWestbound = false;
-
-  // "Is closed to eastbound traffic" (without "tractor" or "truck" nearby)
-  var eastClosedMatches = upper.match(/(?:IS\s+)?CLOSED\s+(?:TO\s+)?EASTBOUND\s+TRAFFIC/gi);
-  if (eastClosedMatches) {
-    // Check if this is near "tractor-semitrailer" — if so, it's truck-only
-    var eastContext = '';
-    var eastIdx = upper.indexOf('CLOSED');
-    if (eastIdx !== -1) {
-      eastContext = upper.substring(Math.max(0, eastIdx - 30), Math.min(upper.length, eastIdx + 150));
-    }
-    if (eastContext.indexOf('TRACTOR') === -1 && eastContext.indexOf('TRUCK') === -1 && eastContext.indexOf('SEMI') === -1) {
-      fullClosureEastbound = true;
-      console.log('FULL eastbound closure detected');
-    } else {
-      console.log('Eastbound closure is truck-only');
-    }
-  }
-
-  // Check for generic eastbound closure
-  var eastClosedGeneric = upper.match(/IS\s+CLOSED\s+(?:TO\s+)?EASTBOUND(?!\s+TO\s+ALL\s+TRACTOR)/gi);
-  if (eastClosedGeneric) {
-    // Verify not truck-only by checking surrounding context
-    var idx = upper.search(/IS\s+CLOSED\s+(?:TO\s+)?EASTBOUND/i);
-    if (idx !== -1) {
-      var ctx = upper.substring(idx, Math.min(upper.length, idx + 200));
-      if (ctx.indexOf('TRACTOR') === -1 && ctx.indexOf('TRUCK') === -1 && ctx.indexOf('SEMI-TRAILER') === -1 && ctx.indexOf('SEMITRAILER') === -1) {
-        fullClosureEastbound = true;
-        console.log('FULL eastbound closure (generic pattern)');
-      }
-    }
-  }
-
-  var westClosedMatches = upper.match(/(?:IS\s+)?CLOSED\s+(?:TO\s+)?WESTBOUND\s+TRAFFIC/gi);
-  if (westClosedMatches) {
-    var westContext = '';
-    var westIdx = upper.lastIndexOf('CLOSED');
-    if (westIdx !== -1) {
-      westContext = upper.substring(Math.max(0, westIdx - 30), Math.min(upper.length, westIdx + 150));
-    }
-    if (westContext.indexOf('TRACTOR') === -1 && westContext.indexOf('TRUCK') === -1 && westContext.indexOf('SEMI') === -1) {
-      fullClosureWestbound = true;
-      console.log('FULL westbound closure detected');
-    } else {
-      console.log('Westbound closure is truck-only');
-    }
-  }
-
-  // Check for generic westbound closure
-  var westClosedGeneric = upper.match(/IS\s+CLOSED\s+(?:TO\s+)?WESTBOUND(?!\s+TO\s+ALL\s+TRACTOR)/gi);
-  if (westClosedGeneric) {
-    var idx2 = upper.search(/IS\s+CLOSED\s+(?:TO\s+)?WESTBOUND/i);
-    if (idx2 !== -1) {
-      var ctx2 = upper.substring(idx2, Math.min(upper.length, idx2 + 200));
-      if (ctx2.indexOf('TRACTOR') === -1 && ctx2.indexOf('TRUCK') === -1 && ctx2.indexOf('SEMI-TRAILER') === -1 && ctx2.indexOf('SEMITRAILER') === -1) {
-        fullClosureWestbound = true;
-        console.log('FULL westbound closure (generic pattern)');
-      }
-    }
-  }
-
-  // Check for "closed at [location]" without direction (means both)
-  var genericClosed = upper.match(/IS\s+CLOSED\s+(?:AT|FROM|BETWEEN)\s+/gi);
-  if (genericClosed) {
-    // Check context for each match
-    var searchStart = 0;
-    for (var g = 0; g < genericClosed.length; g++) {
-      var gIdx = upper.indexOf(genericClosed[g], searchStart);
-      if (gIdx !== -1) {
-        var gCtx = upper.substring(Math.max(0, gIdx - 50), Math.min(upper.length, gIdx + 200));
-        if (gCtx.indexOf('TRACTOR') === -1 && gCtx.indexOf('TRUCK') === -1 && gCtx.indexOf('SEMITRAILER') === -1 && gCtx.indexOf('SEMI-TRAILER') === -1) {
-          // This is a full closure without direction = both directions
-          fullClosureEastbound = true;
-          fullClosureWestbound = true;
-          console.log('FULL both-direction closure detected (generic)');
-        }
-        searchStart = gIdx + 1;
-      }
-    }
-  }
-
-  var bothDirectionsFullyClosed = fullClosureEastbound && fullClosureWestbound;
-  console.log('Full closure analysis:', {
-    fullClosureEastbound: fullClosureEastbound,
-    fullClosureWestbound: fullClosureWestbound,
-    bothDirectionsFullyClosed: bothDirectionsFullyClosed,
-    truckOnlyClosures: truckOnlyClosures,
-  });
-
-  // ============================================
-  // RESTRICTION SIGNALS
-  // ============================================
   var restrictionChecks = [
     { regex: /CHAINS?\s+(?:ARE\s+)?REQUIRED/gi, weight: 8 },
     { regex: /CHAIN\s+CONTROL/gi, weight: 8 },
@@ -221,9 +277,10 @@ function analyzeText(text) {
     { regex: /PILOT\s+CAR/gi, weight: 4 },
     { regex: /HAZARDOUS/gi, weight: 4 },
     { regex: /EXPECT\s+(?:MAJOR\s+)?DELAYS/gi, weight: 3 },
+    { regex: /CLOSED\s+(?:EASTBOUND\s+|WESTBOUND\s+)?(?:TO\s+)?ALL\s+TRACTOR/gi, weight: 8 },
+    { regex: /CLOSED\s+(?:TO\s+)?(?:ALL\s+)?TRUCKS/gi, weight: 8 },
   ];
 
-  // OPEN SIGNALS
   var openChecks = [
     { regex: /NO\s+(?:TRAFFIC\s+)?RESTRICTIONS/gi, weight: 10 },
     { regex: /OPEN\s+(?:AND\s+)?CLEAR/gi, weight: 8 },
@@ -232,55 +289,50 @@ function analyzeText(text) {
 
   var i, matches;
 
-  // Truck-only closures count as restrictions
-  if (truckOnlyClosures > 0) {
-    restrictionScore += 8 * truckOnlyClosures;
-    console.log('Truck closures add to restriction score:', 8 * truckOnlyClosures);
-  }
-
-  // Score restrictions
   for (i = 0; i < restrictionChecks.length; i++) {
-    matches = upper.match(restrictionChecks[i].regex);
+    matches = sierraSection.match(restrictionChecks[i].regex);
     if (matches) {
       restrictionScore += restrictionChecks[i].weight * matches.length;
       console.log('RESTRICTION:', restrictionChecks[i].regex.toString(), 'x' + matches.length);
     }
   }
 
-  // Score open
   for (i = 0; i < openChecks.length; i++) {
-    matches = upper.match(openChecks[i].regex);
+    matches = sierraSection.match(openChecks[i].regex);
     if (matches) {
       openScore += openChecks[i].weight * matches.length;
       console.log('OPEN:', openChecks[i].regex.toString(), 'x' + matches.length);
     }
   }
 
-  console.log('FINAL SCORES - Restriction:', restrictionScore, 'Open:', openScore);
+  console.log('SCORES - Restriction:', restrictionScore, 'Open:', openScore);
 
   // ============================================
-  // DETERMINE STATUS
+  // STEP 5: DETERMINE FINAL STATUS
   // ============================================
 
-  // RED: ONLY when both directions are fully closed to ALL traffic
-  if (bothDirectionsFullyClosed) {
+  // RED: Full road closure (both directions, all traffic)
+  if (hasFullClosure) {
+    console.log('FINAL: CLOSED');
     return {
       status: 'closed',
       scores: { restriction: restrictionScore, open: openScore },
-      note: 'Both directions closed to all traffic',
+      note: 'Full closure detected - road closed to all traffic',
     };
   }
 
-  // YELLOW: Any kind of restriction, partial closure, truck closure, chains, etc.
+  // YELLOW: Any restrictions (chains, truck closures, partial closures, etc.)
   if (restrictionScore >= 3) {
+    console.log('FINAL: RESTRICTIONS');
     return {
       status: 'restrictions',
       scores: { restriction: restrictionScore, open: openScore },
     };
   }
 
-  // YELLOW: One direction fully closed (even to all traffic) but other is open/restricted
-  if (fullClosureEastbound || fullClosureWestbound) {
+  // YELLOW: One direction fully closed to all traffic
+  if (eastFullClosed || westFullClosed) {
+    console.log('FINAL: RESTRICTIONS (one direction)');
     return {
       status: 'restrictions',
       scores: { restriction: restrictionScore, open: openScore },
@@ -288,46 +340,45 @@ function analyzeText(text) {
     };
   }
 
-  // GREEN: Explicitly open
+  // GREEN: Explicitly no restrictions
   if (openScore >= 5) {
+    console.log('FINAL: OPEN (explicit)');
     return {
       status: 'open',
       scores: { restriction: 0, open: openScore },
     };
   }
 
-  // GREEN: Sierra content found but no bad signals
+  // GREEN: Sierra locations but nothing bad
   var sierraLocations = ['COLFAX', 'DONNER', 'TRUCKEE', 'BAXTER', 'APPLEGATE', 'PLACER CO', 'NEVADA STATE'];
   var hasSierraContent = false;
   for (i = 0; i < sierraLocations.length; i++) {
-    if (upper.indexOf(sierraLocations[i]) !== -1) {
+    if (sierraSection.indexOf(sierraLocations[i]) !== -1) {
       hasSierraContent = true;
       break;
     }
   }
 
   if (hasSierraContent) {
+    console.log('FINAL: OPEN (sierra content, no bad signals)');
     return {
       status: 'open',
       scores: { restriction: 0, open: 0 },
-      note: 'Sierra locations found, no restrictions detected',
     };
   }
 
-  // GREEN: Page had real content, nothing bad found
-  if (upper.length > 500) {
+  if (sierraSection.length > 100) {
+    console.log('FINAL: OPEN (content but no signals)');
     return {
       status: 'open',
       scores: { restriction: 0, open: 0 },
-      note: 'Content found but no restriction signals',
     };
   }
 
-  // UNKNOWN: Could not read the page
+  console.log('FINAL: UNKNOWN');
   return {
     status: 'unknown',
     scores: { restriction: 0, open: 0 },
-    debug: { textLength: upper.length },
   };
 }
 
@@ -379,7 +430,6 @@ module.exports = function handler(req, res) {
 
       var plainText = stripHTML(result.raw);
       console.log('Plain text length:', plainText.length);
-      console.log('Plain text sample:', plainText.substring(0, 1500));
 
       var statusData = analyzeText(plainText);
 
